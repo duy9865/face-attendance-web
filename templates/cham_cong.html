@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Chấm công bằng khuôn mặt</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #0f172a;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: auto;
+            text-align: center;
+        }
+
+        h1 {
+            margin-bottom: 8px;
+        }
+
+        .description {
+            color: #94a3b8;
+            margin-bottom: 20px;
+        }
+
+        .camera-box {
+            background: #1e293b;
+            padding: 15px;
+            border-radius: 15px;
+        }
+
+        video {
+            width: 100%;
+            max-height: 450px;
+            object-fit: cover;
+            border-radius: 12px;
+            background: black;
+        }
+
+        canvas {
+            display: none;
+        }
+
+        button,
+        a {
+            display: inline-block;
+            border: none;
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin: 8px 4px;
+            font-size: 15px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .start-button {
+            background: #2563eb;
+            color: white;
+        }
+
+        .capture-button {
+            background: #16a34a;
+            color: white;
+        }
+
+        .stop-button {
+            background: #dc2626;
+            color: white;
+        }
+
+        .back-button {
+            background: #475569;
+            color: white;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background: #334155;
+            color: #e2e8f0;
+            min-height: 50px;
+        }
+
+        .success {
+            background: #14532d !important;
+            color: #bbf7d0 !important;
+        }
+
+        .error {
+            background: #7f1d1d !important;
+            color: #fecaca !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>CHẤM CÔNG</h1>
+
+        <div class="description">
+            Đưa khuôn mặt vào camera rồi bấm chụp
+        </div>
+
+        <div class="camera-box">
+            <video id="video" autoplay playsinline></video>
+
+            <canvas id="canvas"></canvas>
+
+            <div>
+                <button
+                    id="startButton"
+                    class="start-button">
+                    Mở camera
+                </button>
+
+                <button
+                    id="captureButton"
+                    class="capture-button"
+                    disabled>
+                    Chụp và gửi ảnh
+                </button>
+
+                <button
+                    id="stopButton"
+                    class="stop-button"
+                    disabled>
+                    Tắt camera
+                </button>
+            </div>
+        </div>
+
+        <div id="status">
+            Hãy bấm “Mở camera” để bắt đầu.
+        </div>
+
+        <a
+            class="back-button"
+            href="/">
+            Về trang chính
+        </a>
+    </div>
+
+    <script>
+        const video = document.getElementById("video");
+        const canvas = document.getElementById("canvas");
+
+        const startButton = document.getElementById("startButton");
+        const captureButton = document.getElementById("captureButton");
+        const stopButton = document.getElementById("stopButton");
+
+        const statusBox = document.getElementById("status");
+
+        let stream = null;
+
+        function setStatus(message, type = "") {
+            statusBox.textContent = message;
+            statusBox.className = type;
+        }
+
+        // =================================================
+        // MỞ CAMERA
+        // =================================================
+
+        startButton.addEventListener("click", async () => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: "user"
+                    },
+                    audio: false
+                });
+
+                video.srcObject = stream;
+
+                startButton.disabled = true;
+                captureButton.disabled = false;
+                stopButton.disabled = false;
+
+                setStatus("Camera đã mở. Hãy đưa khuôn mặt vào giữa khung hình.");
+
+            } catch (error) {
+                console.error(error);
+
+                setStatus(
+                    "Không thể mở camera. Hãy cấp quyền camera cho trình duyệt.",
+                    "error"
+                );
+            }
+        });
+
+        // =================================================
+        // CHỤP ẢNH VÀ GỬI SERVER
+        // =================================================
+
+        captureButton.addEventListener("click", async () => {
+            if (!stream) {
+                setStatus("Camera chưa được mở.", "error");
+                return;
+            }
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            const context = canvas.getContext("2d");
+
+            context.drawImage(
+                video,
+                0,
+                0,
+                canvas.width,
+                canvas.height
+            );
+
+            setStatus("Đang gửi ảnh lên hệ thống...");
+
+            canvas.toBlob(async (blob) => {
+                const formData = new FormData();
+
+                formData.append(
+                    "image",
+                    blob,
+                    "face.jpg"
+                );
+
+                try {
+                    const response = await fetch(
+                        "/upload-face",
+                        {
+                            method: "POST",
+                            body: formData
+                        }
+                    );
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        setStatus(
+                            result.message,
+                            "success"
+                        );
+                    } else {
+                        setStatus(
+                            result.message,
+                            "error"
+                        );
+                    }
+
+                } catch (error) {
+                    console.error(error);
+
+                    setStatus(
+                        "Không thể kết nối đến server.",
+                        "error"
+                    );
+                }
+            }, "image/jpeg", 0.9);
+        });
+
+        // =================================================
+        // TẮT CAMERA
+        // =================================================
+
+        stopButton.addEventListener("click", () => {
+            if (stream) {
+                stream.getTracks().forEach(track => {
+                    track.stop();
+                });
+
+                stream = null;
+                video.srcObject = null;
+            }
+
+            startButton.disabled = false;
+            captureButton.disabled = true;
+            stopButton.disabled = true;
+
+            setStatus("Camera đã tắt.");
+        });
+    </script>
+</body>
+</html>
